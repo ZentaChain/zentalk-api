@@ -1,6 +1,6 @@
-# ZenTalk API
+# Zentalk API
 
-> HTTP/WebSocket API server for ZenTalk client applications
+> HTTP/WebSocket API server for Zentalk client applications
 
 [![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -20,7 +20,7 @@
 
 ## Overview
 
-ZenTalk API provides a REST API and WebSocket server for client applications (web, mobile) to connect to the decentralized ZenTalk messaging network. This server handles user sessions, message encryption/decryption, and communication with the ZenTalk relay network.
+Zentalk API provides a REST API and WebSocket server for client applications (web, mobile) to connect to the decentralized Zentalk messaging network. This server handles user sessions, message encryption/decryption, and communication with the Zentalk relay network.
 
 ## Features
 
@@ -167,6 +167,6 @@ MIT License - see LICENSE file for details
 
 ## Links
 
-- [ZenTalk Node](https://github.com/ZentaChain/zentalk-node) - Run a relay/mesh node
-- [ZenTalk Protocol](https://github.com/ZentaChain/zentalk-protocol) - Protocol specification
+- [Zentalk Node](https://github.com/ZentaChain/Zentalk-node) - Run a relay/mesh node
+- [Zentalk Protocol](https://github.com/ZentaChain/Zentalk-protocol) - Protocol specification
 - [Website](https://zentachain.io)
