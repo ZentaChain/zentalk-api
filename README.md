@@ -170,9 +170,3 @@ MIT License - see LICENSE file for details
 - [ZenTalk Node](https://github.com/ZentaChain/zentalk-node) - Run a relay/mesh node
 - [ZenTalk Protocol](https://github.com/ZentaChain/zentalk-protocol) - Protocol specification
 - [Website](https://zentachain.io)
-
-## Support
-
-- [Discord](https://discord.gg/zentachain)
-- [Telegram](https://t.me/ZentaChain)
-- [Email](mailto:info@zentachain.io)
