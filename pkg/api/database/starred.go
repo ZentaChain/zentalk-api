@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/zentalk/protocol/pkg/api"
+	"github.com/ZentaChain/zentalk-api/pkg/api"
 )
 
 // StarMessage adds a message to starred messages

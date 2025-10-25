@@ -1,7 +1,7 @@
 package server
 
 import (
-	"github.com/zentalk/protocol/pkg/api"
+	"github.com/ZentaChain/zentalk-api/pkg/api"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -12,10 +12,10 @@ import (
 
 	"github.com/ethereum/go-ethereum/crypto"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
-	zentalkcrypto "github.com/zentalk/protocol/pkg/crypto"
-	"github.com/zentalk/protocol/pkg/dht"
-	"github.com/zentalk/protocol/pkg/network"
-	"github.com/zentalk/protocol/pkg/protocol"
+	zentalkcrypto "github.com/ZentaChain/zentalk-api/pkg/crypto"
+	"github.com/ZentaChain/zentalk-api/pkg/dht"
+	"github.com/ZentaChain/zentalk-api/pkg/network"
+	"github.com/ZentaChain/zentalk-api/pkg/protocol"
 )
 
 // verifyEthereumSignature verifies that a signature was created by signing the message with the given wallet address

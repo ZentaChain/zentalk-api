@@ -6,7 +6,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/zentalk/protocol/pkg/api"
+	"github.com/ZentaChain/zentalk-api/pkg/api"
 )
 
 // HandleDeleteMessage deletes a single message from the chat history

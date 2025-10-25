@@ -1,7 +1,7 @@
 package server
 
 import (
-	"github.com/zentalk/protocol/pkg/api"
+	"github.com/ZentaChain/zentalk-api/pkg/api"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/zentalk/protocol/pkg/protocol"
+	"github.com/ZentaChain/zentalk-api/pkg/protocol"
 )
 
 // EncryptedOfflineMessage represents an encrypted message for offline storage

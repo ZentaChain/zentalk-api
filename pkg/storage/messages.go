@@ -4,8 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/zentalk/protocol/pkg/crypto"
-	"github.com/zentalk/protocol/pkg/protocol"
+	"github.com/ZentaChain/zentalk-api/pkg/crypto"
+	"github.com/ZentaChain/zentalk-api/pkg/protocol"
 )
 
 // ===== MESSAGE OPERATIONS =====

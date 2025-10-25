@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/zentalk/protocol/pkg/api/server"
+	"github.com/ZentaChain/zentalk-api/pkg/api/server"
 )
 
 func main() {

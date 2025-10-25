@@ -130,3 +130,82 @@ func (db *DB) GetBlockedContacts(userAddr string) ([]string, error) {
 
 	return blockedContacts, nil
 }
+
+// MuteContact mutes a contact
+func (db *DB) MuteContact(userAddr, contactAddr string) error {
+	query := `
+		INSERT INTO contacts (user_address, contact_address, username, is_muted)
+		VALUES (?, ?, '', 1)
+		ON CONFLICT(user_address, contact_address) DO UPDATE SET is_muted = 1
+	`
+
+	_, err := db.Conn.Exec(query, userAddr, contactAddr)
+	if err != nil {
+		return fmt.Errorf("failed to mute contact: %v", err)
+	}
+
+	return nil
+}
+
+// UnmuteContact unmutes a contact
+func (db *DB) UnmuteContact(userAddr, contactAddr string) error {
+	query := `
+		UPDATE contacts
+		SET is_muted = 0
+		WHERE user_address = ? AND contact_address = ?
+	`
+
+	_, err := db.Conn.Exec(query, userAddr, contactAddr)
+	if err != nil {
+		return fmt.Errorf("failed to unmute contact: %v", err)
+	}
+
+	return nil
+}
+
+// IsContactMuted checks if a contact is muted
+func (db *DB) IsContactMuted(userAddr, contactAddr string) (bool, error) {
+	query := `
+		SELECT is_muted
+		FROM contacts
+		WHERE user_address = ? AND contact_address = ?
+	`
+
+	var isMuted bool
+	err := db.Conn.QueryRow(query, userAddr, contactAddr).Scan(&isMuted)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("failed to check if muted: %v", err)
+	}
+
+	return isMuted, nil
+}
+
+// GetMutedContacts retrieves all muted contacts for a user
+func (db *DB) GetMutedContacts(userAddr string) ([]string, error) {
+	query := `
+		SELECT contact_address
+		FROM contacts
+		WHERE user_address = ? AND is_muted = 1
+	`
+
+	rows, err := db.Conn.Query(query, userAddr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get muted contacts: %v", err)
+	}
+	defer rows.Close()
+
+	var mutedContacts []string
+	for rows.Next() {
+		var contactAddr string
+		if err := rows.Scan(&contactAddr); err != nil {
+			log.Printf("Error scanning muted contact: %v", err)
+			continue
+		}
+		mutedContacts = append(mutedContacts, contactAddr)
+	}
+
+	return mutedContacts, nil
+}

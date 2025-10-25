@@ -1,7 +1,7 @@
 package server
 
 import (
-	"github.com/zentalk/protocol/pkg/api"
+	"github.com/ZentaChain/zentalk-api/pkg/api"
 	"encoding/json"
 	"log"
 	"net/http"

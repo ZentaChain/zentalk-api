@@ -43,6 +43,7 @@ func New(dbPath string) (*DB, error) {
 		contact_address TEXT NOT NULL,
 		username TEXT,
 		is_blocked BOOLEAN DEFAULT 0,
+		is_muted BOOLEAN DEFAULT 0,
 		is_favorite BOOLEAN DEFAULT 0,
 		added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		PRIMARY KEY (user_address, contact_address),

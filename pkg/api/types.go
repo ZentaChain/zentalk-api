@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zentalk/protocol/pkg/protocol"
+	"github.com/ZentaChain/zentalk-api/pkg/protocol"
 )
 
 // Request types
@@ -335,6 +335,13 @@ type WSMessageEdited struct {
 	MessageID  string `json:"message_id"`  // ID of the edited message
 	ChatID     string `json:"chat_id"`     // Chat ID (peer address)
 	NewContent string `json:"new_content"` // New message content
+}
+
+// User action types (block, mute, clear chat, etc.)
+
+type WSUserAction struct {
+	Action      string `json:"action"`       // "user_blocked", "user_unblocked", "user_muted", "user_unmuted", "chat_cleared", etc.
+	UserAddress string `json:"user_address"` // Address of the user being acted upon
 }
 
 // Message reaction types

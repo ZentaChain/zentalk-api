@@ -1,7 +1,7 @@
 package server
 
 import (
-	"github.com/zentalk/protocol/pkg/api"
+	"github.com/ZentaChain/zentalk-api/pkg/api"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/zentalk/protocol/pkg/crypto"
-	"github.com/zentalk/protocol/pkg/protocol"
+	"github.com/ZentaChain/zentalk-api/pkg/crypto"
+	"github.com/ZentaChain/zentalk-api/pkg/protocol"
 
 )
 

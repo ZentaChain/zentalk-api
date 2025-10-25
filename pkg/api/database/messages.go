@@ -7,7 +7,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/zentalk/protocol/pkg/api"
+	"github.com/ZentaChain/zentalk-api/pkg/api"
 )
 
 // SaveMessage saves a message to the database

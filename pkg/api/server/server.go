@@ -8,10 +8,10 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
-	"github.com/zentalk/protocol/pkg/api"
-	"github.com/zentalk/protocol/pkg/api/database"
-	"github.com/zentalk/protocol/pkg/dht"
-	"github.com/zentalk/protocol/pkg/network"
+	"github.com/ZentaChain/zentalk-api/pkg/api"
+	"github.com/ZentaChain/zentalk-api/pkg/api/database"
+	"github.com/ZentaChain/zentalk-api/pkg/dht"
+	"github.com/ZentaChain/zentalk-api/pkg/network"
 )
 
 // wsConnection wraps a WebSocket connection with a mutex for thread-safe writes
@@ -250,6 +250,10 @@ func (s *Server) setupRoutes() {
 	api.HandleFunc("/block-contact", s.HandleBlockContact).Methods("POST", "OPTIONS")
 	api.HandleFunc("/unblock-contact", s.HandleUnblockContact).Methods("POST", "OPTIONS")
 	api.HandleFunc("/blocked-contacts", s.HandleGetBlockedContacts).Methods("GET", "OPTIONS")
+	api.HandleFunc("/mute-user", s.HandleMuteUser).Methods("POST", "OPTIONS")
+	api.HandleFunc("/unmute-user", s.HandleUnmuteUser).Methods("POST", "OPTIONS")
+	api.HandleFunc("/muted-users", s.HandleGetMutedUsers).Methods("GET", "OPTIONS")
+	api.HandleFunc("/clear-chat", s.HandleClearChat).Methods("POST", "OPTIONS")
 	api.HandleFunc("/star-message", s.HandleStarMessage).Methods("POST", "OPTIONS")
 	api.HandleFunc("/unstar-message", s.HandleUnstarMessage).Methods("POST", "OPTIONS")
 	api.HandleFunc("/starred-messages", s.HandleGetStarredMessages).Methods("GET", "OPTIONS")
