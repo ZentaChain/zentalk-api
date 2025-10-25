@@ -5,6 +5,19 @@
 [![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
+## ⚠️ UNDER DEVELOPMENT - NOT FOR PRODUCTION
+
+**This project is currently under active development and is NOT ready for production use.**
+
+- ❌ Security audits not completed
+- ❌ API may change without notice
+- ❌ Not thoroughly tested in production environments
+- ❌ May contain bugs and vulnerabilities
+
+**Use at your own risk. Do not use for sensitive communications or production deployments.**
+
+---
+
 ## Overview
 
 ZenTalk API provides a REST API and WebSocket server for client applications (web, mobile) to connect to the decentralized ZenTalk messaging network. This server handles user sessions, message encryption/decryption, and communication with the ZenTalk relay network.
