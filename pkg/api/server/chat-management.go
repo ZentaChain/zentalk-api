@@ -29,18 +29,23 @@ func (s *Server) HandleDeleteMessage(w http.ResponseWriter, r *http.Request) {
 	log.Printf("🗑️  [DeleteMessage] %s deleting message %s from chat with %s (delete_for_everyone: %v)",
 		session.Address, req.MessageID, peerAddress, req.DeleteForEveryone)
 
-	// Delete message from session's message history (in-memory)
+	// Mark message as deleted in session's message history (in-memory)
 	messages := session.MessageHistory[peerAddress]
 	found := false
-	newMessages := make([]api.Message, 0, len(messages))
+	var mediaURL string
+	var messageTimestamp string
 
-	for _, msg := range messages {
+	for i, msg := range messages {
 		if msg.ID == req.MessageID {
 			found = true
-			// Skip this message (delete it)
-			continue
+			mediaURL = msg.MediaUrl
+			messageTimestamp = msg.Timestamp
+			// Mark message as deleted instead of removing it
+			messages[i].IsDeleted = true
+			messages[i].Content = "This message was deleted"
+			messages[i].MediaUrl = "" // Clear media URL for deleted messages
+			break
 		}
-		newMessages = append(newMessages, msg)
 	}
 
 	if !found {
@@ -49,16 +54,7 @@ func (s *Server) HandleDeleteMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update message history in-memory
-	session.MessageHistory[peerAddress] = newMessages
-
-	// Find the message to check if it has media attachments
-	var mediaURL string
-	for _, msg := range messages {
-		if msg.ID == req.MessageID {
-			mediaURL = msg.MediaUrl
-			break
-		}
-	}
+	session.MessageHistory[peerAddress] = messages
 
 	// If message has media, delete the media file and mesh chunks
 	if mediaURL != "" {
@@ -77,12 +73,50 @@ func (s *Server) HandleDeleteMessage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Delete message from database (persistent storage)
+	// Mark message as deleted in database (persistent storage)
 	if s.MessageDB != nil {
-		if err := s.MessageDB.DeleteMessage(session.Address, peerAddress, req.MessageID); err != nil {
-			log.Printf("⚠️  Failed to delete message from database: %v", err)
+		if err := s.MessageDB.MarkMessageAsDeleted(session.Address, peerAddress, req.MessageID); err != nil {
+			log.Printf("⚠️  Failed to mark message as deleted in database: %v", err)
 		} else {
-			log.Printf("💾 Deleted message %s from database", req.MessageID)
+			log.Printf("💾 Marked message %s as deleted in sender's database", req.MessageID)
+		}
+
+		// If delete for everyone, also mark as deleted for the peer
+		if req.DeleteForEveryone {
+			// Use MarkMessageAsDeletedByMatch because sender and receiver have different message IDs
+			// We match by sender address and timestamp instead
+			if err := s.MessageDB.MarkMessageAsDeletedByMatch(peerAddress, session.Address, session.Address, messageTimestamp); err != nil {
+				log.Printf("⚠️  Failed to mark message as deleted for peer: %v", err)
+			} else {
+				log.Printf("💾 Marked message as deleted in peer's database (matched by sender+timestamp)")
+			}
+
+			// Also update peer's in-memory session if they're online
+			peerSession := s.GetSession(peerAddress)
+			if peerSession != nil {
+				normalizedSender := api.NormalizeAddress(session.Address)
+				peerMessages := peerSession.MessageHistory[normalizedSender]
+				// Search by timestamp since IDs are different
+				for i, msg := range peerMessages {
+					// Check if this is the message we want to delete by matching timestamp
+					if msg.Timestamp == messageTimestamp {
+						// Also verify sender matches (Sender can be User or string "You")
+						senderMatches := false
+						if user, ok := msg.Sender.(*api.User); ok {
+							senderMatches = user.Address == session.Address
+						}
+
+						if senderMatches {
+							peerMessages[i].IsDeleted = true
+							peerMessages[i].Content = "This message was deleted"
+							peerMessages[i].MediaUrl = ""
+							log.Printf("💾 Updated peer's in-memory session for message at timestamp %s", messageTimestamp)
+							break
+						}
+					}
+				}
+				peerSession.MessageHistory[normalizedSender] = peerMessages
+			}
 		}
 
 		// Delete from starred messages if it was starred
@@ -107,11 +141,15 @@ func (s *Server) HandleDeleteMessage(w http.ResponseWriter, r *http.Request) {
 	log.Printf("✅ COMPLETELY deleted message %s from chat with %s", req.MessageID, peerAddress)
 
 	// If delete_for_everyone, notify the peer via WebSocket
+	log.Printf("🔍 [DeleteMessage] DeleteForEveryone=%v, will broadcast=%v", req.DeleteForEveryone, req.DeleteForEveryone)
 	if req.DeleteForEveryone {
+		log.Printf("📡 [DeleteMessage] Broadcasting deletion to peer %s", peerAddress)
 		s.BroadcastMessageDeletion(peerAddress, api.WSMessageDeleted{
 			MessageID: req.MessageID,
 			ChatID:    session.Address, // The peer sees this as the chat ID
 		})
+	} else {
+		log.Printf("⏭️  [DeleteMessage] NOT broadcasting - DeleteForEveryone is false")
 	}
 
 	s.SendJSON(w, api.DeleteMessageResponse{
@@ -226,6 +264,8 @@ func (s *Server) clearPendingMessagesForChat(recipientAddr string) {
 
 // BroadcastMessageDeletion notifies a peer that a message was deleted
 func (s *Server) BroadcastMessageDeletion(peerAddress string, deletion api.WSMessageDeleted) {
+	log.Printf("📢 [BroadcastMessageDeletion] Called for peer %s, message %s", peerAddress, deletion.MessageID)
+
 	s.WsLock.RLock()
 	wsConn, exists := s.WsConnections[peerAddress]
 	s.WsLock.RUnlock()

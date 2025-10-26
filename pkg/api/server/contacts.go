@@ -226,7 +226,13 @@ func (s *Server) HandleBlockContact(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	log.Printf("🚫 api.User %s blocked %s", normalizedUser, normalizedContact)
+	log.Printf("🚫 User %s blocked %s", normalizedUser, normalizedContact)
+
+	// Notify the blocked user via WebSocket
+	s.BroadcastUserAction(normalizedContact, api.WSUserAction{
+		Action:      "you_were_blocked",
+		UserAddress: normalizedUser, // Who blocked them
+	})
 
 	s.SendJSON(w, api.BlockContactResponse{
 		Success: true,
@@ -261,7 +267,13 @@ func (s *Server) HandleUnblockContact(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	log.Printf("✅ api.User %s unblocked %s", normalizedUser, normalizedContact)
+	log.Printf("✅ User %s unblocked %s", normalizedUser, normalizedContact)
+
+	// Notify the unblocked user via WebSocket
+	s.BroadcastUserAction(normalizedContact, api.WSUserAction{
+		Action:      "you_were_unblocked",
+		UserAddress: normalizedUser, // Who unblocked them
+	})
 
 	s.SendJSON(w, api.UnblockContactResponse{
 		Success: true,

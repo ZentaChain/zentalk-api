@@ -60,6 +60,56 @@ func (s *Server) HandleSendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if sender is blocked by the recipient
+	normalizedSender := api.NormalizeAddress(session.Address)
+	normalizedRecipient := api.NormalizeAddress(searchInput)
+	isBlocked := false
+	if s.MessageDB != nil {
+		isBlocked, err = s.MessageDB.IsBlocked(normalizedRecipient, normalizedSender)
+		if err != nil {
+			log.Printf("⚠️  [SendMessage] Failed to check block status: %v", err)
+		}
+	}
+
+	if isBlocked {
+		// Sender is blocked by recipient - save message locally but don't send it
+		log.Printf("🚫 [SendMessage] User %s is blocked by %s - message will not be delivered", normalizedSender, normalizedRecipient)
+
+		msgID := fmt.Sprintf("msg_%d", time.Now().UnixNano())
+
+		// Check if message contains media
+		mediaUrl := ""
+		if strings.HasPrefix(req.Content, "[MEDIA]") {
+			mediaUrl = strings.TrimSpace(strings.TrimPrefix(req.Content, "[MEDIA]"))
+		}
+
+		// Save message locally for sender only
+		newMessage := api.Message{
+			ID:        msgID,
+			Content:   req.Content,
+			Timestamp: api.FormatTimestamp(time.Now()),
+			Sender:    "You",
+			MediaUrl:  mediaUrl,
+		}
+		session.MessageHistory[normalizedRecipient] = append(session.MessageHistory[normalizedRecipient], newMessage)
+
+		// Save to database
+		if s.MessageDB != nil {
+			if err := s.MessageDB.SaveMessage(session.Address, normalizedRecipient, newMessage); err != nil {
+				log.Printf("⚠️  Failed to save blocked message to database: %v", err)
+			}
+		}
+
+		// Return success but message won't be delivered (stays at "sent" status)
+		s.SendJSON(w, api.SendMessageResponse{
+			Success:   true,
+			MessageID: msgID,
+			Timestamp: time.Now().Unix(),
+			Message:   "Message sent",
+		})
+		return
+	}
+
 	// Try to get cached key bundle first (Telegram-style UX)
 	bundle, found := session.Client.GetCachedKeyBundle(recipientAddr)
 	if !found {
@@ -136,7 +186,7 @@ func (s *Server) HandleSendMessage(w http.ResponseWriter, r *http.Request) {
 
 	// Store in message history (encrypted on client before sending)
 	// Server stores encrypted blobs - cannot decrypt (E2EE with Double Ratchet)
-	normalizedRecipient := api.NormalizeAddress(req.RecipientAddress)
+	// normalizedRecipient already declared above, reuse it
 
 	// Check if message contains media
 	mediaUrl := ""
@@ -206,6 +256,24 @@ func (s *Server) OnMessageReceived(walletAddr string, msg *protocol.DirectMessag
 	if senderAddr == "" {
 		// Fallback to hex if no session found (shouldn't happen in normal flow)
 		senderAddr = api.NormalizeAddress(api.AddressToHex(msg.From))
+	}
+
+	// Check if sender is blocked by the recipient
+	normalizedRecipient := api.NormalizeAddress(walletAddr)
+	normalizedSender := api.NormalizeAddress(senderAddr)
+	isBlocked := false
+	var err error
+	if s.MessageDB != nil {
+		isBlocked, err = s.MessageDB.IsBlocked(normalizedRecipient, normalizedSender)
+		if err != nil {
+			log.Printf("⚠️  [OnMessageReceived] Failed to check block status: %v", err)
+		}
+	}
+
+	if isBlocked {
+		// Recipient has blocked sender - silently drop the message
+		log.Printf("🚫 [OnMessageReceived] Message from %s dropped - blocked by %s", normalizedSender, normalizedRecipient)
+		return
 	}
 
 	// Get or create contact
