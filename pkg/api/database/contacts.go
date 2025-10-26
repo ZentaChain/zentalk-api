@@ -104,6 +104,11 @@ func (db *DB) IsContactBlocked(userAddr, contactAddr string) (bool, error) {
 	return isBlocked, nil
 }
 
+// IsBlocked is an alias for IsContactBlocked
+func (db *DB) IsBlocked(userAddr, contactAddr string) (bool, error) {
+	return db.IsContactBlocked(userAddr, contactAddr)
+}
+
 // GetBlockedContacts retrieves all blocked contacts for a user
 func (db *DB) GetBlockedContacts(userAddr string) ([]string, error) {
 	query := `

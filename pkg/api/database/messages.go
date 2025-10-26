@@ -39,11 +39,12 @@ func (db *DB) SaveMessage(userAddr, peerAddr string, msg api.Message) error {
 
 	query := `
 		INSERT INTO messages
-		(id, user_address, peer_address, content, timestamp, sender, media_url, is_edited, is_read, reactions)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		(id, user_address, peer_address, content, timestamp, sender, media_url, is_edited, is_deleted, is_read, reactions)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(user_address, peer_address, id) DO UPDATE SET
 			content = excluded.content,
 			is_edited = excluded.is_edited,
+			is_deleted = excluded.is_deleted,
 			reactions = excluded.reactions
 	`
 
@@ -56,6 +57,7 @@ func (db *DB) SaveMessage(userAddr, peerAddr string, msg api.Message) error {
 		senderStr,
 		msg.MediaUrl,
 		msg.IsEdited,
+		msg.IsDeleted,
 		isRead,
 		string(reactionsJSON),
 	)
@@ -70,7 +72,7 @@ func (db *DB) SaveMessage(userAddr, peerAddr string, msg api.Message) error {
 // LoadMessages loads all messages for a user-peer pair
 func (db *DB) LoadMessages(userAddr, peerAddr string) ([]api.Message, error) {
 	query := `
-		SELECT id, content, timestamp, sender, media_url, is_edited, is_read, reactions
+		SELECT id, content, timestamp, sender, media_url, is_edited, is_deleted, is_read, reactions
 		FROM messages
 		WHERE user_address = ? AND peer_address = ?
 		ORDER BY created_at ASC
@@ -90,6 +92,7 @@ func (db *DB) LoadMessages(userAddr, peerAddr string) ([]api.Message, error) {
 		var reactionsJSON string
 		var mediaUrl sql.NullString
 		var isEdited sql.NullBool
+		var isDeleted sql.NullBool
 		var isRead sql.NullBool
 
 		err := rows.Scan(
@@ -99,6 +102,7 @@ func (db *DB) LoadMessages(userAddr, peerAddr string) ([]api.Message, error) {
 			&senderStr,
 			&mediaUrl,
 			&isEdited,
+			&isDeleted,
 			&isRead,
 			&reactionsJSON,
 		)
@@ -133,6 +137,10 @@ func (db *DB) LoadMessages(userAddr, peerAddr string) ([]api.Message, error) {
 
 		if isEdited.Valid {
 			msg.IsEdited = isEdited.Bool
+		}
+
+		if isDeleted.Valid {
+			msg.IsDeleted = isDeleted.Bool
 		}
 
 		// Set unread status: message is unread if it's not read AND sender is not "You"
@@ -189,6 +197,46 @@ func (db *DB) LoadAllChats(userAddr string) (map[string][]api.Message, error) {
 }
 
 // DeleteMessage deletes a message from the database
+// MarkMessageAsDeleted marks a message as deleted (soft delete)
+func (db *DB) MarkMessageAsDeleted(userAddr, peerAddr, messageID string) error {
+	query := `
+		UPDATE messages
+		SET is_deleted = 1, content = 'This message was deleted', media_url = ''
+		WHERE user_address = ? AND peer_address = ? AND id = ?
+	`
+
+	_, err := db.Conn.Exec(query, userAddr, peerAddr, messageID)
+	if err != nil {
+		return fmt.Errorf("failed to mark message as deleted: %v", err)
+	}
+
+	return nil
+}
+
+// MarkMessageAsDeletedByMatch marks a message as deleted by matching sender and timestamp
+// This is used for "delete for everyone" where sender and receiver have different message IDs
+func (db *DB) MarkMessageAsDeletedByMatch(userAddr, peerAddr, senderAddr, timestamp string) error {
+	query := `
+		UPDATE messages
+		SET is_deleted = 1, content = 'This message was deleted', media_url = ''
+		WHERE user_address = ? AND peer_address = ? AND sender = ? AND timestamp = ?
+	`
+
+	result, err := db.Conn.Exec(query, userAddr, peerAddr, senderAddr, timestamp)
+	if err != nil {
+		return fmt.Errorf("failed to mark message as deleted by match: %v", err)
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		log.Printf("⚠️  MarkMessageAsDeletedByMatch: No message found for user=%s, peer=%s, sender=%s, timestamp=%s", userAddr, peerAddr, senderAddr, timestamp)
+	} else {
+		log.Printf("✅ MarkMessageAsDeletedByMatch: Marked %d message(s) as deleted", rowsAffected)
+	}
+
+	return nil
+}
+
 func (db *DB) DeleteMessage(userAddr, peerAddr, messageID string) error {
 	query := `
 		DELETE FROM messages

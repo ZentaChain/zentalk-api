@@ -82,6 +82,7 @@ type Message struct {
 	Reactions []Reaction  `json:"reactions,omitempty"` // Message reactions
 	MediaUrl  string      `json:"mediaUrl,omitempty"`  // URL for media messages
 	IsEdited  bool        `json:"isEdited,omitempty"`  // Whether message was edited
+	IsDeleted bool        `json:"isDeleted,omitempty"` // Whether message was deleted
 }
 
 type Chat struct {

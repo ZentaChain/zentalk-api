@@ -80,6 +80,7 @@ func New(dbPath string) (*DB, error) {
 		sender TEXT NOT NULL,
 		media_url TEXT,
 		is_edited BOOLEAN DEFAULT 0,
+		is_deleted BOOLEAN DEFAULT 0,
 		is_read BOOLEAN DEFAULT 0,
 		reactions TEXT,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
