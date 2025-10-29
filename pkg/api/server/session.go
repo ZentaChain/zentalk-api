@@ -12,10 +12,10 @@ import (
 
 	"github.com/ethereum/go-ethereum/crypto"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
-	zentalkcrypto "github.com/ZentaChain/zentalk-api/pkg/crypto"
-	"github.com/ZentaChain/zentalk-api/pkg/dht"
-	"github.com/ZentaChain/zentalk-api/pkg/network"
-	"github.com/ZentaChain/zentalk-api/pkg/protocol"
+	zentalkcrypto "github.com/ZentaChain/zentalk-node/pkg/crypto"
+	"github.com/ZentaChain/zentalk-node/pkg/dht"
+	"github.com/ZentaChain/zentalk-node/pkg/network"
+	"github.com/ZentaChain/zentalk-node/pkg/protocol"
 )
 
 // verifyEthereumSignature verifies that a signature was created by signing the message with the given wallet address

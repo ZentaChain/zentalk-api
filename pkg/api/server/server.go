@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/base64"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,8 +11,8 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/ZentaChain/zentalk-api/pkg/api"
 	"github.com/ZentaChain/zentalk-api/pkg/api/database"
-	"github.com/ZentaChain/zentalk-api/pkg/dht"
-	"github.com/ZentaChain/zentalk-api/pkg/network"
+	"github.com/ZentaChain/zentalk-node/pkg/dht"
+	"github.com/ZentaChain/zentalk-node/pkg/network"
 )
 
 // wsConnection wraps a WebSocket connection with a mutex for thread-safe writes
@@ -193,6 +194,9 @@ func (s *Server) GetOrCreateUserWithProfile(normalizedAddr string) *api.User {
 			dbUser.Status = "online"
 		}
 
+		// Enrich with avatar from MeshStorage
+		s.enrichUserWithAvatar(dbUser, normalizedAddr)
+
 		return dbUser
 	}
 
@@ -216,6 +220,28 @@ func (s *Server) GetOrCreateUserWithProfile(normalizedAddr string) *api.User {
 		Online:   s.IsUserOnline(normalizedAddr),
 		Status:   "online", // Default for users not yet in database
 		Address:  normalizedAddr,
+	}
+}
+
+// enrichUserWithAvatar downloads avatar from MeshStorage and populates the Avatar field
+// This replaces the deprecated Avatar field with a fresh data URL from MeshStorage
+func (s *Server) enrichUserWithAvatar(user *api.User, normalizedAddr string) {
+	// Skip if user is nil
+	if user == nil {
+		return
+	}
+
+	// Download avatar from MeshStorage if needed (avatar field is deprecated, use avatar_chunk_id)
+	avatarDataURL := user.Avatar
+	if (avatarDataURL == "" || avatarDataURL == "/static/images/avatar/default.jpg") && user.AvatarChunkID > 0 {
+		// Download from MeshStorage and convert to data URL
+		if avatarData, err := s.MeshStorage.Download(normalizedAddr, user.AvatarChunkID); err == nil {
+			base64Data := base64.StdEncoding.EncodeToString(avatarData)
+			user.Avatar = fmt.Sprintf("data:image/jpeg;base64,%s", base64Data)
+			log.Printf("✅ Downloaded avatar for %s (chunk %d, %d bytes)", normalizedAddr, user.AvatarChunkID, len(avatarData))
+		} else {
+			log.Printf("⚠️  Failed to download avatar for %s: %v", normalizedAddr, err)
+		}
 	}
 }
 
@@ -250,6 +276,7 @@ func (s *Server) setupRoutes() {
 	api.HandleFunc("/block-contact", s.HandleBlockContact).Methods("POST", "OPTIONS")
 	api.HandleFunc("/unblock-contact", s.HandleUnblockContact).Methods("POST", "OPTIONS")
 	api.HandleFunc("/blocked-contacts", s.HandleGetBlockedContacts).Methods("GET", "OPTIONS")
+	api.HandleFunc("/blocked-by-users", s.HandleGetBlockedByUsers).Methods("GET", "OPTIONS")
 	api.HandleFunc("/mute-user", s.HandleMuteUser).Methods("POST", "OPTIONS")
 	api.HandleFunc("/unmute-user", s.HandleUnmuteUser).Methods("POST", "OPTIONS")
 	api.HandleFunc("/muted-users", s.HandleGetMutedUsers).Methods("GET", "OPTIONS")
@@ -262,7 +289,42 @@ func (s *Server) setupRoutes() {
 	api.HandleFunc("/update-profile", s.HandleUpdateProfile).Methods("POST", "OPTIONS")
 	api.HandleFunc("/get-profile", s.HandleGetProfile).Methods("GET", "OPTIONS")
 	api.HandleFunc("/update-status", s.HandleUpdateStatus).Methods("POST", "OPTIONS")
+	api.HandleFunc("/logout", s.HandleLogout).Methods("POST", "OPTIONS")
 	api.HandleFunc("/debug", s.HandleDebug).Methods("GET", "OPTIONS")
+
+	// Channel routes
+	api.HandleFunc("/channels", s.HandleGetChannels).Methods("GET", "OPTIONS")
+	api.HandleFunc("/channels/create", s.HandleCreateChannel).Methods("POST", "OPTIONS")
+	api.HandleFunc("/channels/discover", s.HandleDiscoverChannels).Methods("POST", "OPTIONS")
+	api.HandleFunc("/channels/{channelId}", s.HandleGetChannelInfo).Methods("GET", "OPTIONS")
+	api.HandleFunc("/channels/{channelId}", s.HandleUpdateChannel).Methods("PUT", "OPTIONS")
+	api.HandleFunc("/channels/{channelId}", s.HandleDeleteChannel).Methods("DELETE", "OPTIONS")
+
+	// Channel membership routes
+	api.HandleFunc("/channels/{channelId}/subscribe", s.HandleSubscribeToChannel).Methods("POST", "OPTIONS")
+	api.HandleFunc("/channels/{channelId}/unsubscribe", s.HandleUnsubscribeFromChannel).Methods("POST", "OPTIONS")
+	api.HandleFunc("/channels/{channelId}/members", s.HandleGetChannelMembers).Methods("GET", "OPTIONS")
+	api.HandleFunc("/channels/{channelId}/members/{userAddress}", s.HandleRemoveChannelMember).Methods("DELETE", "OPTIONS")
+	api.HandleFunc("/channels/{channelId}/promote", s.HandlePromoteToAdmin).Methods("POST", "OPTIONS")
+	api.HandleFunc("/channels/{channelId}/demote", s.HandleDemoteAdmin).Methods("POST", "OPTIONS")
+	api.HandleFunc("/channels/{channelId}/transfer", s.HandleTransferOwnership).Methods("POST", "OPTIONS")
+	api.HandleFunc("/channels/{channelId}/mute", s.HandleMuteChannel).Methods("POST", "OPTIONS")
+	api.HandleFunc("/channels/{channelId}/unmute", s.HandleUnmuteChannel).Methods("POST", "OPTIONS")
+
+	// Channel invite routes
+	api.HandleFunc("/channels/{channelId}/invites", s.HandleCreateChannelInvite).Methods("POST", "OPTIONS")
+	api.HandleFunc("/channels/{channelId}/invites", s.HandleGetChannelInvites).Methods("GET", "OPTIONS")
+	api.HandleFunc("/channels/invites/{inviteId}", s.HandleRevokeChannelInvite).Methods("DELETE", "OPTIONS")
+
+	// Channel messaging routes
+	api.HandleFunc("/channels/{channelId}/messages", s.HandleGetChannelMessages).Methods("GET", "OPTIONS")
+	api.HandleFunc("/channels/{channelId}/messages", s.HandleSendChannelMessage).Methods("POST", "OPTIONS")
+	api.HandleFunc("/channels/{channelId}/messages/{messageId}", s.HandleEditChannelMessage).Methods("PUT", "OPTIONS")
+	api.HandleFunc("/channels/{channelId}/messages/{messageId}", s.HandleDeleteChannelMessage).Methods("DELETE", "OPTIONS")
+	api.HandleFunc("/channels/{channelId}/messages/{messageId}/pin", s.HandlePinChannelMessage).Methods("POST", "OPTIONS")
+	api.HandleFunc("/channels/{channelId}/messages/{messageId}/pin", s.HandleUnpinChannelMessage).Methods("DELETE", "OPTIONS")
+	api.HandleFunc("/channels/{channelId}/messages/{messageId}/react", s.HandleAddChannelMessageReaction).Methods("POST", "OPTIONS")
+	api.HandleFunc("/channels/{channelId}/messages/{messageId}/react", s.HandleRemoveChannelMessageReaction).Methods("DELETE", "OPTIONS")
 
 	// WebSocket route
 	s.Router.HandleFunc("/ws", s.handleWebSocket)

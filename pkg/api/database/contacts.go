@@ -136,6 +136,33 @@ func (db *DB) GetBlockedContacts(userAddr string) ([]string, error) {
 	return blockedContacts, nil
 }
 
+// GetUsersWhoBlockedMe retrieves all users who have blocked the current user
+func (db *DB) GetUsersWhoBlockedMe(userAddr string) ([]string, error) {
+	query := `
+		SELECT user_address
+		FROM contacts
+		WHERE contact_address = ? AND is_blocked = 1
+	`
+
+	rows, err := db.Conn.Query(query, userAddr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get users who blocked me: %v", err)
+	}
+	defer rows.Close()
+
+	var blockedByUsers []string
+	for rows.Next() {
+		var userAddress string
+		if err := rows.Scan(&userAddress); err != nil {
+			log.Printf("Error scanning blocked by user: %v", err)
+			continue
+		}
+		blockedByUsers = append(blockedByUsers, userAddress)
+	}
+
+	return blockedByUsers, nil
+}
+
 // MuteContact mutes a contact
 func (db *DB) MuteContact(userAddr, contactAddr string) error {
 	query := `

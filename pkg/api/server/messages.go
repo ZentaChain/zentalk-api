@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/ZentaChain/zentalk-api/pkg/crypto"
-	"github.com/ZentaChain/zentalk-api/pkg/protocol"
+	"github.com/ZentaChain/zentalk-node/pkg/crypto"
+	"github.com/ZentaChain/zentalk-node/pkg/protocol"
 
 )
 
@@ -75,7 +75,7 @@ func (s *Server) HandleSendMessage(w http.ResponseWriter, r *http.Request) {
 		// Sender is blocked by recipient - save message locally but don't send it
 		log.Printf("🚫 [SendMessage] User %s is blocked by %s - message will not be delivered", normalizedSender, normalizedRecipient)
 
-		msgID := fmt.Sprintf("msg_%d", time.Now().UnixNano())
+		msgID := fmt.Sprintf("msg_%d", time.Now().UnixMilli())
 
 		// Check if message contains media
 		mediaUrl := ""
@@ -89,6 +89,7 @@ func (s *Server) HandleSendMessage(w http.ResponseWriter, r *http.Request) {
 			Content:   req.Content,
 			Timestamp: api.FormatTimestamp(time.Now()),
 			Sender:    "You",
+			Status:    "sent", // Blocked messages stay at "sent" status (won't show delivered/read)
 			MediaUrl:  mediaUrl,
 		}
 		session.MessageHistory[normalizedRecipient] = append(session.MessageHistory[normalizedRecipient], newMessage)
@@ -135,7 +136,10 @@ func (s *Server) HandleSendMessage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	msgID := fmt.Sprintf("msg_%d", time.Now().UnixNano())
+	// Generate deterministic message ID from timestamp (will be regenerated on receiver with same timestamp)
+	msgTimestamp := time.Now().UnixMilli()
+	msgID := fmt.Sprintf("msg_%d", msgTimestamp)
+	log.Printf("📝 [SendMessage] Generated message ID: %s (timestamp: %d)", msgID, msgTimestamp)
 
 	// Load relay public key from file (for testing)
 	// In production, this should be obtained from the relay during handshake
@@ -168,7 +172,7 @@ func (s *Server) HandleSendMessage(w http.ResponseWriter, r *http.Request) {
 	directMsg := &protocol.DirectMessage{
 		From:           session.Client.Address,
 		To:             recipientAddr,
-		Timestamp:      uint64(time.Now().UnixMilli()),
+		Timestamp:      uint64(msgTimestamp), // Use the same timestamp as msgID for consistency
 		SequenceNumber: session.Client.GetNextSequenceNumber(recipientAddr),
 		ContentType:    protocol.ContentTypeText,
 		Content:        []byte(req.Content),
@@ -200,6 +204,7 @@ func (s *Server) HandleSendMessage(w http.ResponseWriter, r *http.Request) {
 		Content:   req.Content,
 		Timestamp: api.FormatTimestamp(time.Now()),
 		Sender:    "You",
+		Status:    "delivered", // Message delivered to backend
 		MediaUrl:  mediaUrl,
 	}
 	session.MessageHistory[normalizedRecipient] = append(session.MessageHistory[normalizedRecipient], newMessage)
@@ -286,8 +291,9 @@ func (s *Server) OnMessageReceived(walletAddr string, msg *protocol.DirectMessag
 		contact.Online = s.IsUserOnline(senderAddr)
 	}
 
-	// Store message
-	msgID := protocol.GenerateMessageID()
+	// Store message - use timestamp from DirectMessage to generate same ID as sender
+	msgID := fmt.Sprintf("msg_%d", msg.Timestamp)
+	log.Printf("📝 [OnMessageReceived] Generated message ID: %s (from DirectMessage timestamp: %d)", msgID, msg.Timestamp)
 
 	// Check if message contains media
 	content := string(msg.Content)
@@ -298,11 +304,12 @@ func (s *Server) OnMessageReceived(walletAddr string, msg *protocol.DirectMessag
 	}
 
 	message := api.Message{
-		ID:        fmt.Sprintf("%x", msgID),
+		ID:        msgID,
 		Content:   content,
 		Timestamp: api.FormatTimestamp(time.Now()),
 		Sender:    contact,
 		Unread:    true,
+		Status:    "delivered", // Incoming messages start as delivered
 		MediaUrl:  mediaUrl,
 	}
 
@@ -319,7 +326,7 @@ func (s *Server) OnMessageReceived(walletAddr string, msg *protocol.DirectMessag
 	wsMsg := api.WSMessage{
 		Type: "message",
 		Payload: api.WSIncomingMessage{
-			ID:        fmt.Sprintf("%x", msgID),
+			ID:        msgID,
 			From:      senderAddr,
 			Content:   string(msg.Content),
 			Timestamp: time.Now().Unix(),

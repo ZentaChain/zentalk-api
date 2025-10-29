@@ -66,8 +66,9 @@ func (s *Server) handleMarkAsRead(w http.ResponseWriter, r *http.Request) {
 				for i := range messages {
 					if messages[i].ID == req.MessageID {
 						messages[i].Unread = false
+						messages[i].Status = "read" // Update status to "read"
 						found = true
-						log.Printf("✅ Updated in-memory cache for message %s (Unread: false)", req.MessageID)
+						log.Printf("✅ Updated in-memory cache for message %s (Unread: false, Status: read)", req.MessageID)
 						break
 					}
 				}

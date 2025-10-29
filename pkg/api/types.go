@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ZentaChain/zentalk-api/pkg/protocol"
+	"github.com/ZentaChain/zentalk-node/pkg/protocol"
 )
 
 // Request types
@@ -62,7 +62,8 @@ type User struct {
 	AvatarKey     []byte `json:"avatar_key,omitempty"`      // Encryption key for avatar
 	Bio           string `json:"bio"` // Always send bio field, even if empty
 	Online        bool   `json:"online"`
-	Status        string `json:"status"` // "online", "away", "busy", "offline" - always send even if empty
+	Status        string `json:"status"`     // "online", "away", "busy", "offline" - always send even if empty
+	LastOnline    string `json:"last_online,omitempty"` // Timestamp when user was last online
 	Address       string `json:"address"` // Hex-encoded
 }
 
@@ -79,6 +80,7 @@ type Message struct {
 	Timestamp string      `json:"timestamp"`
 	Sender    interface{} `json:"sender"` // User object or "You"
 	Unread    bool        `json:"unread,omitempty"`
+	Status    string      `json:"status,omitempty"`    // Message delivery status: "sending", "sent", "delivered", "read", "failed"
 	Reactions []Reaction  `json:"reactions,omitempty"` // Message reactions
 	MediaUrl  string      `json:"mediaUrl,omitempty"`  // URL for media messages
 	IsEdited  bool        `json:"isEdited,omitempty"`  // Whether message was edited
@@ -236,6 +238,7 @@ type PeerInfo struct {
 	Avatar            string           `json:"avatar"`             // Avatar URL
 	Bio               string           `json:"bio"`                // User bio - always send
 	Online            bool             `json:"online"`             // Online status
+	LastOnline        string           `json:"last_online,omitempty"` // Last online timestamp (hidden if blocked)
 	EncryptionStatus  EncryptionStatus `json:"encryption_status"`  // Encryption details
 	ConnectionInfo    ConnectionInfo   `json:"connection_info"`    // Connection details
 	SecurityIndicators SecurityIndicators `json:"security_indicators"` // Security indicators
@@ -532,4 +535,380 @@ type UpdateStatusResponse struct {
 type WSStatusUpdate struct {
 	Address string `json:"address"`
 	Status  string `json:"status"`
+}
+
+type WSProfileUpdate struct {
+	Address       string `json:"address"`
+	FirstName     string `json:"first_name"`
+	LastName      string `json:"last_name"`
+	Bio           string `json:"bio"`
+	AvatarChunkID uint64 `json:"avatar_chunk_id"`
+}
+
+// Channel types
+
+type Channel struct {
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	Description     string `json:"description"`
+	AvatarChunkID   uint64 `json:"avatar_chunk_id"`
+	AvatarKey       []byte `json:"avatar_key,omitempty"`
+	OwnerAddress    string `json:"owner_address"`
+	Type            string `json:"type"` // "public" or "private"
+	IsVerified      bool   `json:"is_verified"`
+	SubscriberCount int    `json:"subscriber_count"`
+	CreatedAt       string `json:"created_at"`
+	UpdatedAt       string `json:"updated_at"`
+	UserRole        string `json:"user_role,omitempty"` // Role of requesting user: "owner", "admin", "subscriber"
+	IsMuted         bool   `json:"is_muted,omitempty"`  // Whether user muted this channel
+}
+
+type ChannelMember struct {
+	ChannelID         string `json:"channel_id"`
+	UserAddress       string `json:"user_address"`
+	Username          string `json:"username"`
+	FirstName         string `json:"first_name,omitempty"`
+	LastName          string `json:"last_name,omitempty"`
+	Avatar            string `json:"avatar,omitempty"`
+	Role              string `json:"role"` // "owner", "admin", "subscriber"
+	JoinedAt          string `json:"joined_at"`
+	IsMuted           bool   `json:"is_muted"`
+	LastReadMessageID string `json:"last_read_message_id,omitempty"`
+}
+
+type ChannelMessage struct {
+	ID        string      `json:"id"`
+	ChannelID string      `json:"channel_id"`
+	Sender    User        `json:"sender"` // Always User object (never "You")
+	Content   string      `json:"content"`
+	Timestamp string      `json:"timestamp"`
+	IsEdited  bool        `json:"is_edited,omitempty"`
+	IsDeleted bool        `json:"is_deleted,omitempty"`
+	IsPinned  bool        `json:"is_pinned,omitempty"`
+	PinnedAt  string      `json:"pinned_at,omitempty"`
+	PinnedBy  string      `json:"pinned_by,omitempty"`
+	MediaUrl  string      `json:"media_url,omitempty"`
+	Reactions []Reaction  `json:"reactions,omitempty"`
+	ViewCount int         `json:"view_count"`
+}
+
+type ChannelInvite struct {
+	ID         string `json:"id"`
+	ChannelID  string `json:"channel_id"`
+	InvitedBy  string `json:"invited_by"`
+	InviteCode string `json:"invite_code"`
+	MaxUses    int    `json:"max_uses"`
+	Uses       int    `json:"uses"`
+	ExpiresAt  string `json:"expires_at,omitempty"`
+	CreatedAt  string `json:"created_at"`
+}
+
+// Channel API request/response types
+
+type CreateChannelRequest struct {
+	Name            string   `json:"name"`
+	Description     string   `json:"description"`
+	Type            string   `json:"type"` // "public" or "private"
+	AvatarChunkID   uint64   `json:"avatar_chunk_id,omitempty"`
+	AvatarKey       string   `json:"avatar_key,omitempty"` // Base64-encoded
+	InitialMembers  []string `json:"initial_members,omitempty"` // Addresses to add as initial subscribers
+}
+
+type CreateChannelResponse struct {
+	Success bool    `json:"success"`
+	Channel Channel `json:"channel,omitempty"`
+	Message string  `json:"message"`
+}
+
+type GetChannelsResponse struct {
+	Success  bool      `json:"success"`
+	Channels []Channel `json:"channels"`
+	Message  string    `json:"message"`
+}
+
+type GetChannelInfoRequest struct {
+	ChannelID string `json:"channel_id"`
+}
+
+type GetChannelInfoResponse struct {
+	Success bool    `json:"success"`
+	Channel Channel `json:"channel,omitempty"`
+	Message string  `json:"message"`
+}
+
+type UpdateChannelRequest struct {
+	ChannelID     string `json:"channel_id"`
+	Name          string `json:"name,omitempty"`
+	Description   string `json:"description,omitempty"`
+	AvatarChunkID uint64 `json:"avatar_chunk_id,omitempty"`
+	AvatarKey     string `json:"avatar_key,omitempty"`
+	Type          string `json:"type,omitempty"` // "public" or "private"
+}
+
+type UpdateChannelResponse struct {
+	Success bool    `json:"success"`
+	Channel Channel `json:"channel,omitempty"`
+	Message string  `json:"message"`
+}
+
+type DeleteChannelRequest struct {
+	ChannelID string `json:"channel_id"`
+}
+
+type DeleteChannelResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+type SubscribeToChannelRequest struct {
+	ChannelID  string `json:"channel_id"`
+	InviteCode string `json:"invite_code,omitempty"` // Required for private channels
+}
+
+type SubscribeToChannelResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+type UnsubscribeFromChannelRequest struct {
+	ChannelID string `json:"channel_id"`
+}
+
+type UnsubscribeFromChannelResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+type GetChannelMembersRequest struct {
+	ChannelID string `json:"channel_id"`
+}
+
+type GetChannelMembersResponse struct {
+	Success bool            `json:"success"`
+	Members []ChannelMember `json:"members"`
+	Message string          `json:"message"`
+}
+
+type RemoveChannelMemberRequest struct {
+	ChannelID   string `json:"channel_id"`
+	UserAddress string `json:"user_address"`
+}
+
+type RemoveChannelMemberResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+type PromoteToAdminRequest struct {
+	ChannelID   string `json:"channel_id"`
+	UserAddress string `json:"user_address"`
+}
+
+type PromoteToAdminResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+type DemoteAdminRequest struct {
+	ChannelID   string `json:"channel_id"`
+	UserAddress string `json:"user_address"`
+}
+
+type DemoteAdminResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+type TransferOwnershipRequest struct {
+	ChannelID      string `json:"channel_id"`
+	NewOwnerAddress string `json:"new_owner_address"`
+}
+
+type TransferOwnershipResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+type SendChannelMessageRequest struct {
+	ChannelID string `json:"channel_id"`
+	Content   string `json:"content"`
+	MediaID   string `json:"media_id,omitempty"`
+}
+
+type SendChannelMessageResponse struct {
+	Success   bool   `json:"success"`
+	MessageID string `json:"message_id"`
+	Timestamp string `json:"timestamp"`
+	Message   string `json:"message"`
+}
+
+type GetChannelMessagesRequest struct {
+	ChannelID string `json:"channel_id"`
+	Limit     int    `json:"limit,omitempty"`
+	Before    string `json:"before,omitempty"` // Message ID for pagination
+}
+
+type GetChannelMessagesResponse struct {
+	Success  bool             `json:"success"`
+	Messages []ChannelMessage `json:"messages"`
+	Message  string           `json:"message"`
+}
+
+type EditChannelMessageRequest struct {
+	ChannelID  string `json:"channel_id"`
+	MessageID  string `json:"message_id"`
+	NewContent string `json:"new_content"`
+}
+
+type EditChannelMessageResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+type DeleteChannelMessageRequest struct {
+	ChannelID string `json:"channel_id"`
+	MessageID string `json:"message_id"`
+}
+
+type DeleteChannelMessageResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+type PinChannelMessageRequest struct {
+	ChannelID string `json:"channel_id"`
+	MessageID string `json:"message_id"`
+}
+
+type PinChannelMessageResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+type UnpinChannelMessageRequest struct {
+	ChannelID string `json:"channel_id"`
+	MessageID string `json:"message_id"`
+}
+
+type UnpinChannelMessageResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+type MuteChannelRequest struct {
+	ChannelID string `json:"channel_id"`
+}
+
+type MuteChannelResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+type UnmuteChannelRequest struct {
+	ChannelID string `json:"channel_id"`
+}
+
+type UnmuteChannelResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+type CreateChannelInviteRequest struct {
+	ChannelID string `json:"channel_id"`
+	MaxUses   int    `json:"max_uses,omitempty"`   // 0 = unlimited
+	ExpiresAt string `json:"expires_at,omitempty"` // ISO timestamp
+}
+
+type CreateChannelInviteResponse struct {
+	Success bool          `json:"success"`
+	Invite  ChannelInvite `json:"invite,omitempty"`
+	Message string        `json:"message"`
+}
+
+type GetChannelInvitesRequest struct {
+	ChannelID string `json:"channel_id"`
+}
+
+type GetChannelInvitesResponse struct {
+	Success bool            `json:"success"`
+	Invites []ChannelInvite `json:"invites"`
+	Message string          `json:"message"`
+}
+
+type RevokeChannelInviteRequest struct {
+	InviteID string `json:"invite_id"`
+}
+
+type RevokeChannelInviteResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+type DiscoverChannelsRequest struct {
+	Query  string `json:"query,omitempty"`  // Search query
+	Limit  int    `json:"limit,omitempty"`  // Max results
+	Offset int    `json:"offset,omitempty"` // Pagination offset
+}
+
+type DiscoverChannelsResponse struct {
+	Success  bool      `json:"success"`
+	Channels []Channel `json:"channels"`
+	Message  string    `json:"message"`
+}
+
+// Channel WebSocket types
+
+type WSChannelMessage struct {
+	ChannelID string         `json:"channel_id"`
+	Message   ChannelMessage `json:"message"`
+}
+
+type WSChannelCreated struct {
+	Channel Channel `json:"channel"`
+}
+
+type WSChannelUpdated struct {
+	ChannelID string            `json:"channel_id"`
+	Updates   map[string]interface{} `json:"updates"`
+}
+
+type WSChannelDeleted struct {
+	ChannelID string `json:"channel_id"`
+}
+
+type WSChannelMemberJoined struct {
+	ChannelID string        `json:"channel_id"`
+	Member    ChannelMember `json:"member"`
+}
+
+type WSChannelMemberLeft struct {
+	ChannelID   string `json:"channel_id"`
+	UserAddress string `json:"user_address"`
+}
+
+type WSChannelMemberPromoted struct {
+	ChannelID   string `json:"channel_id"`
+	UserAddress string `json:"user_address"`
+	Role        string `json:"role"` // "admin" or "owner"
+}
+
+type WSChannelMemberRemoved struct {
+	ChannelID   string `json:"channel_id"`
+	UserAddress string `json:"user_address"`
+}
+
+type WSChannelMessageEdited struct {
+	ChannelID  string `json:"channel_id"`
+	MessageID  string `json:"message_id"`
+	NewContent string `json:"new_content"`
+}
+
+type WSChannelMessageDeleted struct {
+	ChannelID string `json:"channel_id"`
+	MessageID string `json:"message_id"`
+}
+
+type WSChannelMessagePinned struct {
+	ChannelID string `json:"channel_id"`
+	MessageID string `json:"message_id"`
 }

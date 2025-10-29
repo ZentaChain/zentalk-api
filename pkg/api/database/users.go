@@ -140,6 +140,22 @@ func (db *DB) UpdateUserStatus(walletAddr, status string) error {
 	return nil
 }
 
+// UpdateLastOnline updates the last_online timestamp for a user
+func (db *DB) UpdateLastOnline(walletAddr string) error {
+	query := `
+		UPDATE users
+		SET last_online = CURRENT_TIMESTAMP, is_online = 0
+		WHERE wallet_address = ?
+	`
+
+	_, err := db.Conn.Exec(query, walletAddr)
+	if err != nil {
+		return fmt.Errorf("failed to update last_online: %v", err)
+	}
+
+	return nil
+}
+
 // UpdateUsername updates the user's username
 func (db *DB) UpdateUsername(walletAddr, newUsername string) error {
 	query := `

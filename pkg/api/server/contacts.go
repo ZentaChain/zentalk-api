@@ -98,11 +98,32 @@ func (s *Server) HandleGetPeerInfo(w http.ResponseWriter, r *http.Request) {
 
 	// Get or create contact info (normalize address for lookup)
 	normalizedPeerAddr := api.NormalizeAddress(req.PeerAddress)
+	normalizedUserAddr := api.NormalizeAddress(session.Address)
+
 	// Always refresh from database to get latest bio and profile data
 	contact := s.GetOrCreateUserWithProfile(normalizedPeerAddr)
 	contact.Online = s.IsUserOnline(normalizedPeerAddr)
 	// Update cache with fresh data
 	session.ContactCache[normalizedPeerAddr] = contact
+
+	// Get last_online from database
+	var lastOnline string
+	if s.MessageDB != nil {
+		// Check if current user has blocked the peer
+		isBlocked, err := s.MessageDB.IsContactBlocked(normalizedUserAddr, normalizedPeerAddr)
+		if err != nil {
+			log.Printf("⚠️  Error checking block status: %v", err)
+			isBlocked = false
+		}
+
+		// Only include last_online if user hasn't blocked the peer (privacy)
+		if !isBlocked {
+			peerUser, err := s.MessageDB.GetUser(normalizedPeerAddr)
+			if err == nil && peerUser != nil {
+				lastOnline = peerUser.LastOnline
+			}
+		}
+	}
 
 	// Get encryption status
 	hasRatchetSession := false
@@ -160,14 +181,18 @@ func (s *Server) HandleGetPeerInfo(w http.ResponseWriter, r *http.Request) {
 		trustLevel = "high" // Fully verified with DHT and session
 	}
 
+	// Enrich contact with fresh avatar from MeshStorage
+	s.enrichUserWithAvatar(contact, normalizedPeerAddr)
+
 	// Build peer info
 	peerInfo := &api.PeerInfo{
-		Address:  req.PeerAddress,
-		Name:     contact.Name,
-		Username: contact.Username,
-		Avatar:   contact.Avatar,
-		Bio:      contact.Bio,
-		Online:   contact.Online,
+		Address:    req.PeerAddress,
+		Name:       contact.Name,
+		Username:   contact.Username,
+		Avatar:     contact.Avatar,
+		Bio:        contact.Bio,
+		Online:     contact.Online,
+		LastOnline: lastOnline, // Empty if blocked (privacy)
 		EncryptionStatus: api.EncryptionStatus{
 			Protocol:                "X3DH + Double Ratchet",
 			HasRatchetSession:       hasRatchetSession,
@@ -305,5 +330,32 @@ func (s *Server) HandleGetBlockedContacts(w http.ResponseWriter, r *http.Request
 		Success:          true,
 		BlockedAddresses: blockedAddresses,
 		Message:          fmt.Sprintf("Found %d blocked contacts", len(blockedAddresses)),
+	})
+}
+
+// HandleGetBlockedByUsers retrieves all users who have blocked the current user
+func (s *Server) HandleGetBlockedByUsers(w http.ResponseWriter, r *http.Request) {
+	session, err := s.GetUserSession(r)
+	if err != nil {
+		s.SendError(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	normalizedUser := api.NormalizeAddress(session.Address)
+
+	var blockedByAddresses []string
+	if s.MessageDB != nil {
+		blockedByAddresses, err = s.MessageDB.GetUsersWhoBlockedMe(normalizedUser)
+		if err != nil {
+			log.Printf("❌ Failed to get users who blocked me: %v", err)
+			s.SendError(w, fmt.Sprintf("Failed to get blocked by users: %v", err), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	s.SendJSON(w, api.GetBlockedContactsResponse{
+		Success:          true,
+		BlockedAddresses: blockedByAddresses,
+		Message:          fmt.Sprintf("Found %d users who blocked you", len(blockedByAddresses)),
 	})
 }

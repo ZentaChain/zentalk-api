@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 )
 
@@ -242,6 +243,9 @@ func (s *Server) HandleUpdateProfile(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Broadcast profile update to all connected users (excluding those who blocked this user)
+	s.broadcastProfileUpdate(walletAddr, req.FirstName, req.LastName, req.Bio, req.AvatarChunkID)
+
 	log.Printf("✅ Profile updated successfully for %s", walletAddr)
 
 	s.SendJSON(w, api.UpdateProfileResponse{
@@ -333,19 +337,76 @@ func (s *Server) HandleUpdateStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Broadcast status update via WebSocket
-	s.broadcastWS(api.WSMessage{
-		Type: "status_update",
-		Payload: api.WSStatusUpdate{
-			Address: walletAddr,
-			Status:  req.Status,
-		},
-	})
+	// Broadcast status update via WebSocket (excluding users who blocked this user)
+	s.broadcastStatusUpdate(walletAddr, req.Status)
 
 	log.Printf("✅ Status updated for %s: %s", walletAddr, req.Status)
 
 	s.SendJSON(w, api.UpdateStatusResponse{
 		Success: true,
 		Message: "Status updated successfully",
+	})
+}
+
+// HandleLogout logs out a user and cleans up their session
+func (s *Server) HandleLogout(w http.ResponseWriter, r *http.Request) {
+	session, err := s.GetUserSession(r)
+	if err != nil {
+		s.SendError(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	walletAddr := api.NormalizeAddress(session.Address)
+
+	log.Printf("🚪 [Logout] User %s logging out", walletAddr)
+
+	// Update last_online timestamp in database FIRST
+	if s.MessageDB != nil {
+		err := s.MessageDB.UpdateLastOnline(walletAddr)
+		if err != nil {
+			log.Printf("⚠️  Failed to update last_online for %s: %v", walletAddr, err)
+		}
+	}
+
+	// Remove from online users map BEFORE broadcasting
+	s.OnlineLock.Lock()
+	delete(s.OnlineUsers, walletAddr)
+	s.OnlineLock.Unlock()
+
+	// Broadcast offline status to other users BEFORE closing WebSocket
+	// This ensures other users receive the offline notification
+	log.Printf("📢 Broadcasting offline status for %s", walletAddr)
+	s.broadcastOnlineStatus(walletAddr, false)
+
+	// Give a tiny moment for the broadcast to be sent
+	// This ensures the offline message is actually transmitted before we close connections
+	time.Sleep(50 * time.Millisecond)
+
+	// Close WebSocket connection AFTER broadcasting
+	s.WsLock.Lock()
+	if wsConn, exists := s.WsConnections[walletAddr]; exists {
+		wsConn.conn.Close()
+		delete(s.WsConnections, walletAddr)
+		log.Printf("🔌 Closed WebSocket for %s", walletAddr)
+	}
+	s.WsLock.Unlock()
+
+	// Disconnect client (if connected to relay)
+	if session.Client != nil {
+		if err := session.Client.Disconnect(); err != nil {
+			log.Printf("⚠️  Error disconnecting client for %s: %v", walletAddr, err)
+		} else {
+			log.Printf("🔌 Disconnected client from relay for %s", walletAddr)
+		}
+	}
+
+	// Clean up session (stops DHT node and removes from sessions map)
+	s.CleanupSession(walletAddr)
+
+	log.Printf("✅ [Logout] User %s logged out successfully", walletAddr)
+
+	s.SendJSON(w, map[string]interface{}{
+		"success": true,
+		"message": "Logged out successfully",
 	})
 }
